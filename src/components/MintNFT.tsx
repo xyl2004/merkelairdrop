@@ -3,9 +3,9 @@ import { useAccount, useContractRead, useContractWrite, useWaitForTransaction } 
 import { MerkleTree } from 'merkletreejs';
 import { ethers } from 'ethers';
 
-// 白名单地址和证明映射 - 所有地址转为小写
+// 白名单地址和证明映射 
 const whitelist: { [key: string]: string[] } = {
-  "0x65f11439c3a958b1beae65a245bf21c551b886d": ["0x3e48480d16c6d7303961ebac643a079a12e732a4726f58477d2c600d768057fd"],
+  "0x65F11439C3a958b1beEAE65a245bf21C551B886d": ["0x3e48480d16c6d7303961ebac643a079a12e732a4726f58477d2c600d768057fd"],
   "0x67117b1ff315095f870df6523b3b8341b0063cde": ["0xc88663f9a8d8ac815b9ea825fdd57dc3b23ae5f2f440ae111a0224be7106446d"]
 };
 
@@ -137,11 +137,22 @@ const MintNFT = () => {
     setSuccess("");
 
     try {
-      // 检查地址是否在预设的白名单中 - 确保都使用小写比较
-      const lowerCaseAddress = address.toLowerCase();
+      // 添加调试信息
+      console.log("当前连接的钱包地址:", address);
+      console.log("白名单中的地址:", Object.keys(whitelist));
+      console.log("地址是否直接匹配:", whitelist[address] !== undefined);
+
+      // 检查地址是否在预设的白名单中 - 尝试不区分大小写比较
+      const addressLower = address.toLowerCase();
+      const whitelistKeys = Object.keys(whitelist).map(addr => addr.toLowerCase());
+      const isInWhitelist = whitelistKeys.includes(addressLower);
       
-      if (whitelist[lowerCaseAddress]) {
-        const proofArray = whitelist[lowerCaseAddress];
+      console.log("地址小写后:", addressLower);
+      console.log("白名单地址小写后:", whitelistKeys);
+      console.log("小写比较是否匹配:", isInWhitelist);
+      
+      if (whitelist[address]) {
+        const proofArray = whitelist[address];
         const hexProof = proofArray.map(p => p as `0x${string}`);
         setProof(hexProof);
         setIsWhitelisted(true);
@@ -149,6 +160,26 @@ const MintNFT = () => {
         
         // 验证成功后自动查询已铸造ID
         findNextAvailableId();
+      } else if (isInWhitelist) {
+        // 如果小写比较匹配，找到原始大小写格式的地址
+        const originalCaseAddr = Object.keys(whitelist).find(
+          addr => addr.toLowerCase() === addressLower
+        );
+        
+        if (originalCaseAddr) {
+          console.log("找到原始大小写地址:", originalCaseAddr);
+          const proofArray = whitelist[originalCaseAddr];
+          const hexProof = proofArray.map(p => p as `0x${string}`);
+          setProof(hexProof);
+          setIsWhitelisted(true);
+          setSuccess("恭喜！您的地址在白名单中，可以铸造NFT。(大小写不同但已匹配)");
+          
+          // 验证成功后自动查询已铸造ID
+          findNextAvailableId();
+        } else {
+          setIsWhitelisted(false);
+          setError("出现异常：小写匹配但找不到原始地址");
+        }
       } else {
         setIsWhitelisted(false);
         setError("抱歉，您的地址不在白名单中。");
@@ -166,14 +197,21 @@ const MintNFT = () => {
     if (!address || !isWhitelisted) return;
     
     try {
-      // 确保使用小写地址
-      const lowerCaseAddress = address.toLowerCase() as `0x${string}`;
+      // 尝试找到白名单中匹配的地址（考虑大小写）
+      const addressLower = address.toLowerCase();
+      const originalCaseAddr = Object.keys(whitelist).find(
+        addr => addr.toLowerCase() === addressLower
+      ) || address;
       
-      // 构造数组格式的proof
-      const proofArray = [whitelist[lowerCaseAddress][0]];
+      // 使用找到的原始大小写地址或当前地址
+      const userAddress = address as `0x${string}`;
+      
+      // 构造数组格式的proof - 使用原始大小写地址获取proof
+      const proofArray = [whitelist[originalCaseAddr][0]];
       
       console.log("铸造参数:", {
-        address: lowerCaseAddress,
+        address: userAddress,
+        originalAddress: originalCaseAddr,
         tokenId,
         proof: proofArray
       });
@@ -182,7 +220,7 @@ const MintNFT = () => {
       if (typeof mintNFT === 'function') {
         // @ts-ignore - 忽略类型错误
         await mintNFT({
-          args: [lowerCaseAddress, BigInt(tokenId), proofArray],
+          args: [userAddress, BigInt(tokenId), proofArray],
         });
       }
 
@@ -229,6 +267,11 @@ const MintNFT = () => {
             <div className="bg-gray-100 p-3 rounded-md">
               <code className="text-sm break-all">{address}</code>
             </div>
+            {isWhitelisted && (
+              <div className="mt-1 text-xs text-green-600">
+                该地址已验证在白名单中
+              </div>
+            )}
           </div>
 
           {balance && Number(balance) > 0 && (
